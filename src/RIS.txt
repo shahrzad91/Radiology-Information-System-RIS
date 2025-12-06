@@ -1,0 +1,79 @@
+from pydicom.dataset import Dataset
+from pynetdicom import AE, debug_logger
+#from pynetdicom.sop_class import PatientRootQueryRetrieveInformationFind
+#from pynetdicom.sop_class import ModalityWorklistInformationFind
+#from pynetdicom.sop_class import ModalityPerformedProcedureStep
+from pynetdicom.sop_class import ModalityPerformedProcedureStepRetrieve
+from pydicom.dataset import FileDataset, FileMetaDataset
+from pydicom.uid import UID
+from pynetdicom.status import Status
+
+
+def RIS_SYSTEM(inputdate):
+    """
+       input : date 
+       
+       ouput : return matched patient information 
+       
+    """
+    debug_logger()
+    ae = AE()
+    ae.ae_title ="FAXITRON"    
+    ae.add_requested_context(ModalityPerformedProcedureStepRetrieve)
+    #ae.add_requested_context(ModalityWorklistInformationFind)
+    #ae.add_requested_context(ModalityPerformedProcedureStep)
+
+    # Create our Identifier (query) dataset
+    ds = Dataset()
+    ds.QueryRetrieveLevel = 'PATIENT'
+    ds.ScheduledStationAETitle ='FILMDIGITIZE'   
+    ds.ScheduledProcedureStepStartDate =inputdate   # DYNAMIC
+    #ds.PatientName ='Test^Test'     #'CITIZEN^Jan'                                             
+
+
+    # Associate with the peer AE at IP 127.0.0.1 and port 11112
+    assoc = ae.associate("192.168.1.199", 107,ae_title='DVTK')
+    if assoc.is_established:
+        # Send the C-FIND request
+        #responses = assoc.send_c_find(ds, PatientRootQueryRetrieveInformationFind)
+        #responses = assoc.send_c_find(ds, ModalityPerformedProcedureStep )
+        responses = assoc.send_c_find(ds, ModalityPerformedProcedureStepRetrieve )
+        print('DESIRED DATA ' , ds)
+        for (status, identifier) in responses:
+            #print(status[0x0000, 0x0900])
+            status2 = Dataset()
+            status2.add_new(0x00000900, 'US', 65280)
+            print(status2)
+        
+            if status == status2:
+           
+                print('DATA IN RIS ' , identifier)
+                print('ScheduledStationAETitle', identifier[0x0040, 0x0100][0][0x0040, 0x0010].value)
+                print('ScheduledProcedureStepStartDate' , identifier[0x0040, 0x0100][0][0x0040, 0x0002].value)
+            
+            
+                if  identifier[0x0040, 0x0100][0][0x0040, 0x0010].value == ds.ScheduledStationAETitle:
+                    print([])
+                    if identifier[0x0040, 0x0100][0][0x0040, 0x0002].value == ds.ScheduledProcedureStepStartDate:
+                        print(identifier)
+                        matched_patientName = identifier[0x0010,0x0010].value
+                        matched_patientID = identifier[0x0010,0x0020].value
+                        matched_accessID = identifier[0x0008,0x0050].value
+                        matched_date =identifier[0x0040, 0x0100][0][0x0040, 0x0002].value
+                        matched_gender = identifier[0x0010,0x0040].value
+                        
+                        return ('information of desired data' ,matched_patientName,matched_patientID, matched_accessID ,matched_date,matched_gender )
+                    
+                    else:
+                        return(' there is no patient with this features')
+            elif status == 'Success':
+                print('C-FIND finished, releasing the association')
+            elif status == 'Cancel':
+                print('C-FIND cancelled, releasing the association')
+            elif status == 'Failure':
+                print('C-FIND failed, releasing the association')
+
+    # Release the association
+        assoc.release()
+    else:
+        print('Association rejected, aborted or never connected')
